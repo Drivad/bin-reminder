@@ -67,3 +67,45 @@ def test_find_pindex_does_not_match_partial():
 def test_find_pindex_raises_on_no_match():
     with pytest.raises(ValueError, match="Address not found"):
         find_pindex(FAKE_SEQ2_HTML, "99")
+
+
+import datetime
+from scraper import parse_collections
+
+
+FAKE_SEQ3_HTML = """
+<html><body>
+<ul class="displayinlineblock">
+  <li tabIndex="0"><p class="colordarkblue">Thursday</p></li>
+  <li tabIndex="0"><p class="colordarkblue">12/03/2026</p></li>
+  <li tabIndex="0"><p class="colordarkblue">Garden Waste Collection Service</p></li>
+</ul>
+<hr>
+<ul class="displayinlineblock">
+  <li tabIndex="0"><p class="colordarkblue">Tuesday</p></li>
+  <li tabIndex="0"><p class="colordarkblue">17/03/2026</p></li>
+  <li tabIndex="0"><p class="colordarkblue">Food Waste Collection Service</p></li>
+</ul>
+<hr>
+<ul class="displayinlineblock">
+  <li tabIndex="0"><p class="colordarkblue">Tuesday</p></li>
+  <li tabIndex="0"><p class="colordarkblue">17/03/2026</p></li>
+  <li tabIndex="0"><p class="colordarkblue">Recycling Collection Service</p></li>
+</ul>
+</body></html>
+"""
+
+
+def test_parse_collections_returns_all_entries():
+    entries = parse_collections(FAKE_SEQ3_HTML)
+    assert len(entries) == 3
+
+
+def test_parse_collections_entry_structure():
+    entries = parse_collections(FAKE_SEQ3_HTML)
+    assert entries[0] == (datetime.date(2026, 3, 12), "Garden Waste Collection Service")
+    assert entries[1] == (datetime.date(2026, 3, 17), "Food Waste Collection Service")
+
+
+def test_parse_collections_empty_page():
+    assert parse_collections("<html><body></body></html>") == []

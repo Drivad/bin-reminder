@@ -1,3 +1,4 @@
+import datetime
 import re
 
 from bs4 import BeautifulSoup
@@ -27,3 +28,26 @@ def find_pindex(html: str, house_number: str) -> str:
             if match:
                 return match.group(1)
     raise ValueError(f"Address not found for house number '{house_number}'")
+
+
+def parse_collections(html: str) -> list[tuple[datetime.date, str]]:
+    """Parse collection entries from seq=3 HTML. Returns list of (date, service_name)."""
+    soup = BeautifulSoup(html, "html.parser")
+    results = []
+    date_pattern = re.compile(r"^\d{2}/\d{2}/\d{4}$")
+    # Each collection is a <ul> block with tabindex="0" <li> items
+    for ul in soup.find_all("ul"):
+        texts = [
+            li.get_text(strip=True)
+            for li in ul.find_all("li", {"tabindex": "0"})
+        ]
+        # Find a date-shaped string and the service name (last text item)
+        date_str = next((t for t in texts if date_pattern.match(t)), None)
+        service = texts[-1] if texts else None
+        if date_str and service and not date_pattern.match(service):
+            try:
+                date = datetime.datetime.strptime(date_str, "%d/%m/%Y").date()
+                results.append((date, service))
+            except ValueError:
+                continue
+    return results
