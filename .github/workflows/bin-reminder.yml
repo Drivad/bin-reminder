@@ -1,0 +1,28 @@
+name: Bin Collection Reminder
+
+on:
+  schedule:
+    - cron: '0 19 * * *'  # 7pm UTC daily (may run up to ~60 min late)
+  workflow_dispatch:        # allows manual trigger for testing
+
+jobs:
+  remind:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run bin reminder
+        run: python scraper.py
+        env:
+          POSTCODE: ${{ secrets.POSTCODE }}
+          HOUSE_NUMBER: ${{ secrets.HOUSE_NUMBER }}
+          GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          RECIPIENT_EMAIL: ${{ secrets.RECIPIENT_EMAIL }}
