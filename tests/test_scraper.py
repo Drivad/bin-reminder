@@ -136,3 +136,40 @@ def test_collections_tomorrow_no_match():
 
 def test_collections_tomorrow_empty_input():
     assert collections_tomorrow([], datetime.date(2026, 3, 16)) == []
+
+
+import email as email_module
+from scraper import compose_email
+
+
+def test_compose_email_subject():
+    msg = compose_email(
+        services=["Recycling Collection Service", "Food Waste Collection Service"],
+        tomorrow=datetime.date(2026, 3, 17),
+        sender="bot@gmail.com",
+        recipient="me@gmail.com",
+    )
+    assert msg["Subject"] == "Bin reminder: put out your bins tonight"
+
+
+def test_compose_email_recipient():
+    msg = compose_email(
+        services=["Garden Waste Collection Service"],
+        tomorrow=datetime.date(2026, 3, 26),
+        sender="bot@gmail.com",
+        recipient="me@gmail.com",
+    )
+    assert msg["To"] == "me@gmail.com"
+    assert msg["From"] == "bot@gmail.com"
+
+
+def test_compose_email_body_contains_services():
+    msg = compose_email(
+        services=["Recycling Collection Service"],
+        tomorrow=datetime.date(2026, 3, 17),
+        sender="bot@gmail.com",
+        recipient="me@gmail.com",
+    )
+    body = msg.get_payload()
+    assert "Recycling Collection Service" in body
+    assert "Tuesday 17 March" in body

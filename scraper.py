@@ -2,6 +2,7 @@ import datetime
 import re
 
 from bs4 import BeautifulSoup
+from email.mime.text import MIMEText
 
 
 def extract_track_token(html: str) -> str:
@@ -60,3 +61,25 @@ def collections_tomorrow(
     """Return service names for collections scheduled for tomorrow."""
     tomorrow = today + datetime.timedelta(days=1)
     return [service for date, service in entries if date == tomorrow]
+
+
+def compose_email(
+    services: list[str],
+    tomorrow: datetime.date,
+    sender: str,
+    recipient: str,
+) -> MIMEText:
+    """Compose a plain-text reminder email."""
+    date_str = tomorrow.strftime("%A %-d %B")  # e.g. "Tuesday 17 March"
+    service_lines = "\n".join(f"- {s}" for s in services)
+    body = (
+        f"Tomorrow's collections ({date_str}):\n"
+        f"{service_lines}\n\n"
+        f"— Waverley bin bot"
+    )
+    msg = MIMEText("")
+    msg.set_payload(body, charset=None)
+    msg["Subject"] = "Bin reminder: put out your bins tonight"
+    msg["From"] = sender
+    msg["To"] = recipient
+    return msg
