@@ -109,3 +109,30 @@ def test_parse_collections_entry_structure():
 
 def test_parse_collections_empty_page():
     assert parse_collections("<html><body></body></html>") == []
+
+
+from scraper import collections_tomorrow
+
+
+def test_collections_tomorrow_finds_match():
+    today = datetime.date(2026, 3, 16)  # Monday
+    entries = [
+        (datetime.date(2026, 3, 17), "Food Waste Collection Service"),
+        (datetime.date(2026, 3, 17), "Recycling Collection Service"),
+        (datetime.date(2026, 3, 24), "Domestic Waste Collection Service"),
+    ]
+    result = collections_tomorrow(entries, today)
+    assert result == [
+        "Food Waste Collection Service",
+        "Recycling Collection Service",
+    ]
+
+
+def test_collections_tomorrow_no_match():
+    today = datetime.date(2026, 3, 16)
+    entries = [(datetime.date(2026, 3, 24), "Domestic Waste Collection Service")]
+    assert collections_tomorrow(entries, today) == []
+
+
+def test_collections_tomorrow_empty_input():
+    assert collections_tomorrow([], datetime.date(2026, 3, 16)) == []

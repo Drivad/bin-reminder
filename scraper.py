@@ -51,3 +51,12 @@ def parse_collections(html: str) -> list[tuple[datetime.date, str]]:
             except ValueError:
                 continue
     return results
+
+
+def collections_tomorrow(
+    entries: list[tuple[datetime.date, str]],
+    today: datetime.date,
+) -> list[str]:
+    """Return service names for collections scheduled for tomorrow."""
+    tomorrow = today + datetime.timedelta(days=1)
+    return [service for date, service in entries if date == tomorrow]
