@@ -1,6 +1,10 @@
 import datetime
+import os
 import re
+import smtplib
+import sys
 
+import requests
 from bs4 import BeautifulSoup
 from email.mime.text import MIMEText
 
@@ -83,3 +87,67 @@ def compose_email(
     msg["From"] = sender
     msg["To"] = recipient
     return msg
+
+
+def fetch_html(url: str, method: str = "get", data: dict = None, timeout: int = 15) -> str:
+    """Fetch URL, raise on HTTP error, return HTML text."""
+    if method == "post":
+        resp = requests.post(url, data=data, timeout=timeout)
+    else:
+        resp = requests.get(url, timeout=timeout)
+    resp.raise_for_status()
+    return resp.text
+
+
+def send_email(msg: MIMEText, sender: str, app_password: str) -> None:
+    """Send email via Gmail SMTP."""
+    with smtplib.SMTP("smtp.gmail.com", 587) as smtp:
+        smtp.starttls()
+        smtp.login(sender, app_password)
+        smtp.send_message(msg)
+
+
+def main() -> None:
+    postcode = os.environ["POSTCODE"]
+    house_number = os.environ["HOUSE_NUMBER"]
+    gmail_address = os.environ["GMAIL_ADDRESS"]
+    gmail_app_password = os.environ["GMAIL_APP_PASSWORD"]
+    recipient = os.environ["RECIPIENT_EMAIL"]
+
+    # Step 1: get Track token
+    seq1_html = fetch_html("https://wav-wrp.whitespacews.com/mop.php?serviceID=A&seq=1")
+    token = extract_track_token(seq1_html)
+
+    # Step 2: POST postcode, find pIndex
+    seq2_url = f"https://wav-wrp.whitespacews.com/mop.php?serviceID=A&Track={token}&seq=2"
+    seq2_html = fetch_html(seq2_url, method="post", data={
+        "address_postcode": postcode,
+        "address_name_number": house_number,
+    })
+    pindex = find_pindex(seq2_html, house_number)
+
+    # Step 3: fetch collection schedule
+    seq3_url = (
+        f"https://wav-wrp.whitespacews.com/mop.php"
+        f"?Track={token}&serviceID=A&seq=3&pIndex={pindex}"
+    )
+    seq3_html = fetch_html(seq3_url)
+    entries = parse_collections(seq3_html)
+
+    # Check for tomorrow
+    today = datetime.datetime.utcnow().date()
+    due_tomorrow = collections_tomorrow(entries, today)
+
+    if not due_tomorrow:
+        print("No collections due tomorrow. Nothing to do.")
+        sys.exit(0)
+
+    # Send reminder
+    tomorrow = today + datetime.timedelta(days=1)
+    msg = compose_email(due_tomorrow, tomorrow, gmail_address, recipient)
+    send_email(msg, gmail_address, gmail_app_password)
+    print(f"Reminder sent for: {', '.join(due_tomorrow)}")
+
+
+if __name__ == "__main__":
+    main()
