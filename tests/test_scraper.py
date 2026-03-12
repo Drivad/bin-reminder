@@ -18,6 +18,13 @@ def test_extract_track_token_returns_token():
     assert token == "2026/03/12/QDFR1EH53W"
 
 
-def test_extract_track_token_raises_on_missing():
-    with pytest.raises(ValueError, match="Track token not found"):
+def test_extract_track_token_raises_on_missing_form():
+    with pytest.raises(ValueError, match="Property Lookup Form not in page"):
         extract_track_token("<html><body>no form here</body></html>")
+
+
+def test_extract_track_token_raises_on_missing_param():
+    with pytest.raises(ValueError, match="no Track param in form action"):
+        extract_track_token(
+            '<html><body><form data-form-title="Property Lookup Form" action="/foo"></form></body></html>'
+        )
