@@ -135,7 +135,7 @@ def main() -> None:
     entries = parse_collections(seq3_html)
 
     # Check for tomorrow
-    today = datetime.datetime.utcnow().date()
+    today = datetime.datetime.now(datetime.timezone.utc).date()
     due_tomorrow = collections_tomorrow(entries, today)
 
     if not due_tomorrow:
