@@ -18,6 +18,8 @@ def _week_range(today: datetime.date, offset_weeks: int = 0):
     return monday, sunday
 
 
+# Each tuple: (keyword_to_match_in_query, display_name_to_match_in_service_string)
+# display_name is used (not keyword) so synonyms like "rubbish"→"Domestic Waste" work correctly
 _SERVICE_KEYWORDS = [
     ("garden", "Garden Waste"),
     ("recycling", "Recycling"),
