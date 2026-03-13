@@ -78,3 +78,41 @@ def resolve_intent(
     if len(names) == 1:
         return f"Your next collection is {names[0]} on {date_str}."
     return f"Your next collections are {' and '.join(names)} on {date_str}."
+
+
+from flask import Flask, request as flask_request
+
+app = Flask(__name__)
+
+
+def scrape_schedule() -> list:
+    """Run 3-step scrape and return list of (date, service_name) tuples. Raises on failure."""
+    postcode = os.environ["POSTCODE"]
+    house_number = os.environ["HOUSE_NUMBER"]
+    seq1_html = fetch_html("https://wav-wrp.whitespacews.com/mop.php?serviceID=A&seq=1")
+    token = extract_track_token(seq1_html)
+    seq2_url = f"https://wav-wrp.whitespacews.com/mop.php?serviceID=A&Track={token}&seq=2"
+    seq2_html = fetch_html(seq2_url, method="post", data={
+        "address_postcode": postcode,
+        "address_name_number": house_number,
+    })
+    pindex = find_pindex(seq2_html, house_number)
+    seq3_url = f"https://wav-wrp.whitespacews.com/mop.php?Track={token}&serviceID=A&seq=3&pIndex={pindex}"
+    seq3_html = fetch_html(seq3_url)
+    return parse_collections(seq3_html)
+
+
+@app.route("/ask")
+def ask():
+    q = flask_request.args.get("q", "")
+    try:
+        collections = scrape_schedule()
+    except Exception as e:
+        print(f"Scrape error: {e}", file=sys.stderr)
+        return (
+            "Sorry, I couldn't fetch the bin schedule right now. Please try again later.",
+            200,
+            {"Content-Type": "text/plain"},
+        )
+    response = resolve_intent(q, collections)
+    return response, 200, {"Content-Type": "text/plain"}
