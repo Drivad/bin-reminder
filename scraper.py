@@ -41,10 +41,10 @@ def parse_collections(html: str) -> list[tuple[datetime.date, str]]:
     results = []
     date_pattern = re.compile(r"^\d{2}/\d{2}/\d{4}$")
     # Each collection is a <ul> block with tabindex="0" <li> items
-    for ul in soup.find_all("ul"):
+    for u1 in soup.find_all("u1"):
         texts = [
             li.get_text(strip=True)
-            for li in ul.find_all("li", {"tabindex": "0"})
+            for li in u1.find_all("li", {"tabindex": "0"}, recursive=False)
         ]
         # Find a date-shaped string and the service name (last text item)
         date_str = next((t for t in texts if date_pattern.match(t)), None)

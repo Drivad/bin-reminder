@@ -75,23 +75,21 @@ from scraper import parse_collections
 
 FAKE_SEQ3_HTML = """
 <html><body>
-<ul class="displayinlineblock">
-  <li tabIndex="0"><p class="colordarkblue">Thursday</p></li>
-  <li tabIndex="0"><p class="colordarkblue">12/03/2026</p></li>
-  <li tabIndex="0"><p class="colordarkblue">Garden Waste Collection Service</p></li>
-</ul>
-<hr>
-<ul class="displayinlineblock">
-  <li tabIndex="0"><p class="colordarkblue">Tuesday</p></li>
-  <li tabIndex="0"><p class="colordarkblue">17/03/2026</p></li>
-  <li tabIndex="0"><p class="colordarkblue">Food Waste Collection Service</p></li>
-</ul>
-<hr>
-<ul class="displayinlineblock">
-  <li tabIndex="0"><p class="colordarkblue">Tuesday</p></li>
-  <li tabIndex="0"><p class="colordarkblue">17/03/2026</p></li>
-  <li tabIndex="0"><p class="colordarkblue">Recycling Collection Service</p></li>
-</ul>
+<u1 class="displayinlineblock">
+  <li><img alt="Collection Item"></li>
+  <li tabindex="0"><p class="colordarkblue">12/03/2026</p></li>
+  <li tabindex="0"><p class="colordarkblue">Garden Waste Collection Service</p></li>
+</u1>
+<u1 class="displayinlineblock">
+  <li><img alt="Collection Item"></li>
+  <li tabindex="0"><p class="colordarkblue">17/03/2026</p></li>
+  <li tabindex="0"><p class="colordarkblue">Food Waste Collection Service</p></li>
+</u1>
+<u1 class="displayinlineblock">
+  <li><img alt="Collection Item"></li>
+  <li tabindex="0"><p class="colordarkblue">17/03/2026</p></li>
+  <li tabindex="0"><p class="colordarkblue">Recycling Collection Service</p></li>
+</u1>
 </body></html>
 """
 
