@@ -66,3 +66,45 @@ def test_resolve_intent_general():
 def test_resolve_intent_service_not_found():
     result = resolve_intent("garden", [], TODAY)
     assert result == "There are no upcoming Garden Waste collections in the schedule."
+
+
+def test_resolve_intent_this_week():
+    result = resolve_intent("what collections are this week", FAKE_COLLECTIONS, TODAY)
+    assert result == "This week's collections: Food Waste on Tuesday 17 March, Recycling on Tuesday 17 March."
+
+
+def test_resolve_intent_this_week_no_results():
+    result = resolve_intent("this week", [], TODAY)
+    assert result == "There are no collections this week."
+
+
+def test_resolve_intent_next_week():
+    result = resolve_intent("what collections are next week", FAKE_COLLECTIONS, TODAY)
+    assert result == "Next week's collections: Domestic Waste on Tuesday 24 March, Food Waste on Tuesday 24 March, Garden Waste on Thursday 26 March."
+
+
+def test_resolve_intent_next_week_no_results():
+    result = resolve_intent("next week", [], TODAY)
+    assert result == "There are no collections next week."
+
+
+def test_resolve_intent_default_multiple_services():
+    result = resolve_intent("", FAKE_COLLECTIONS, TODAY)
+    assert result == "Your next collections are Food Waste and Recycling on Tuesday 17 March."
+
+
+def test_resolve_intent_default_single_service():
+    single = [(datetime.date(2026, 3, 26), "Garden Waste Collection Service")]
+    result = resolve_intent("", single, TODAY)
+    assert result == "Your next collection is Garden Waste on Thursday 26 March."
+
+
+def test_resolve_intent_default_empty():
+    result = resolve_intent("", [], TODAY)
+    assert result == "There are no upcoming collections in the schedule."
+
+
+def test_resolve_intent_this_week_takes_priority_over_service():
+    # "recycling this week" → this week intent wins (first match), not recycling intent
+    result = resolve_intent("recycling this week", FAKE_COLLECTIONS, TODAY)
+    assert result == "This week's collections: Food Waste on Tuesday 17 March, Recycling on Tuesday 17 March."
