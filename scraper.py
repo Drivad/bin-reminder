@@ -8,7 +8,6 @@ import requests
 from bs4 import BeautifulSoup
 from email.mime.text import MIMEText
 
-
 def extract_track_token(html: str) -> str:
     """Extract the Track session token from the seq=1 page HTML."""
     soup = BeautifulSoup(html, "html.parser")
@@ -21,7 +20,6 @@ def extract_track_token(html: str) -> str:
         raise ValueError("Track token not found: no Track param in form action")
     return match.group(1)
 
-
 def find_pindex(html: str, house_number: str) -> str:
     """Find the pIndex for a given house number in the seq=2 address list HTML."""
     soup = BeautifulSoup(html, "html.parser")
@@ -33,7 +31,6 @@ def find_pindex(html: str, house_number: str) -> str:
             if match:
                 return match.group(1)
     raise ValueError(f"Address not found for house number '{house_number}'")
-
 
 def parse_collections(html: str) -> list[tuple[datetime.date, str]]:
     """Parse collection entries from seq=3 HTML. Returns list of (date, service_name)."""
@@ -57,7 +54,6 @@ def parse_collections(html: str) -> list[tuple[datetime.date, str]]:
                 continue
     return results
 
-
 def collections_tomorrow(
     entries: list[tuple[datetime.date, str]],
     today: datetime.date,
@@ -65,7 +61,6 @@ def collections_tomorrow(
     """Return service names for collections scheduled for tomorrow."""
     tomorrow = today + datetime.timedelta(days=1)
     return [service for date, service in entries if date == tomorrow]
-
 
 def compose_email(
     services: list[str],
@@ -81,13 +76,12 @@ def compose_email(
         f"{service_lines}\n\n"
         f"— Waverley bin bot"
     )
-    msg = MIMEText("")
-    msg.set_payload(body, charset=None)
+    # Specify UTF-8 charset directly in MIMEText
+    msg = MIMEText(body, _charset="utf-8")
     msg["Subject"] = "Bin reminder: put out your bins tonight"
     msg["From"] = sender
     msg["To"] = recipient
     return msg
-
 
 def fetch_html(url: str, method: str = "get", data: dict = None, timeout: int = 15) -> str:
     """Fetch URL, raise on HTTP error, return HTML text."""
@@ -98,14 +92,12 @@ def fetch_html(url: str, method: str = "get", data: dict = None, timeout: int = 
     resp.raise_for_status()
     return resp.text
 
-
 def send_email(msg: MIMEText, sender: str, app_password: str) -> None:
     """Send email via Gmail SMTP."""
     with smtplib.SMTP("smtp.gmail.com", 587) as smtp:
         smtp.starttls()
         smtp.login(sender, app_password)
         smtp.send_message(msg)
-
 
 def main() -> None:
     postcode = os.environ["POSTCODE"]
@@ -147,7 +139,6 @@ def main() -> None:
     msg = compose_email(due_tomorrow, tomorrow, gmail_address, recipient)
     send_email(msg, gmail_address, gmail_app_password)
     print(f"Reminder sent for: {', '.join(due_tomorrow)}")
-
 
 if __name__ == "__main__":
     main()
