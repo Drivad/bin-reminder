@@ -2,7 +2,7 @@ name: Bin Collection Reminder
 
 on:
   schedule:
-    - cron: '0 19 * * *'  # 7pm UTC daily (may run up to ~60 min late)
+    - cron: '0 17 * * *'  # 5pm UTC daily / 6pm BST (may run up to ~60 min late)
   workflow_dispatch:        # allows manual trigger for testing
 
 jobs:
