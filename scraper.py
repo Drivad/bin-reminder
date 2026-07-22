@@ -124,6 +124,7 @@ def main() -> None:
         f"?Track={token}&serviceID=A&seq=3&pIndex={pindex}"
     )
     seq3_html = fetch_html(seq3_url)
+    print(f"DEBUG seq3 HTML (first 3000 chars):\n{seq3_html[:3000]}", file=sys.stderr)
     entries = parse_collections(seq3_html)
     print(f"Scraped {len(entries)} collection(s): {[(str(d), s) for d, s in entries]}")
 
