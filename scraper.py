@@ -125,6 +125,7 @@ def main() -> None:
     )
     seq3_html = fetch_html(seq3_url)
     entries = parse_collections(seq3_html)
+    print(f"Scraped {len(entries)} collection(s): {[(str(d), s) for d, s in entries]}")
 
     # Check for tomorrow
     today = datetime.datetime.now(datetime.timezone.utc).date()
