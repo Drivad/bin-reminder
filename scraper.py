@@ -124,7 +124,11 @@ def main() -> None:
         f"?Track={token}&serviceID=A&seq=3&pIndex={pindex}"
     )
     seq3_html = fetch_html(seq3_url)
-    print(f"DEBUG seq3 HTML (first 3000 chars):\n{seq3_html[:3000]}", file=sys.stderr)
+    # Print the section of HTML most likely to contain collection data
+    idx = seq3_html.lower().find("collection")
+    snippet = seq3_html[max(0, idx - 200):idx + 2000] if idx != -1 else seq3_html[-3000:]
+    print(f"DEBUG seq3 HTML around 'collection':\n{snippet}", file=sys.stderr)
+    print(f"DEBUG u1 tags found: {seq3_html.lower().count('<u1')}, ul tags: {seq3_html.lower().count('<ul')}", file=sys.stderr)
     entries = parse_collections(seq3_html)
     print(f"Scraped {len(entries)} collection(s): {[(str(d), s) for d, s in entries]}")
 
