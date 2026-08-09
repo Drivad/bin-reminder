@@ -83,12 +83,20 @@ def compose_email(
     msg["To"] = recipient
     return msg
 
+_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/124.0.0.0 Safari/537.36"
+    )
+}
+
 def fetch_html(url: str, method: str = "get", data: dict = None, timeout: int = 15) -> str:
     """Fetch URL, raise on HTTP error, return HTML text."""
     if method == "post":
-        resp = requests.post(url, data=data, timeout=timeout)
+        resp = requests.post(url, data=data, headers=_HEADERS, timeout=timeout)
     else:
-        resp = requests.get(url, timeout=timeout)
+        resp = requests.get(url, headers=_HEADERS, timeout=timeout)
     resp.raise_for_status()
     return resp.text
 
