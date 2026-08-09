@@ -107,49 +107,37 @@ def send_email(msg: MIMEText, sender: str, app_password: str) -> None:
         smtp.login(sender, app_password)
         smtp.send_message(msg)
 
+# Anchor: a known Recycling Tuesday. The fortnightly cycle is:
+#   anchor + 0, 14, 28, ... days → Food Waste + Recycling
+#   anchor + 7, 21, 35, ... days → Food Waste + Domestic Waste
+_RECYCLING_ANCHOR = datetime.date(2026, 8, 4)
+
+
+def scheduled_collections(date: datetime.date) -> list[str]:
+    """Return collection service names for a given date using hardcoded fortnightly schedule."""
+    if date.weekday() != 1:  # 1 = Tuesday
+        return []
+    services = ["Food Waste Collection Service"]
+    if (date - _RECYCLING_ANCHOR).days % 14 == 0:
+        services.append("Recycling Collection Service")
+    else:
+        services.append("Domestic Waste Collection Service")
+    return services
+
+
 def main() -> None:
-    postcode = os.environ["POSTCODE"]
-    house_number = os.environ["HOUSE_NUMBER"]
     gmail_address = os.environ["GMAIL_ADDRESS"]
     gmail_app_password = os.environ["GMAIL_APP_PASSWORD"]
     recipient = os.environ["RECIPIENT_EMAIL"]
 
-    # Step 1: get Track token
-    seq1_html = fetch_html("https://wav-wrp.whitespacews.com/mop.php?serviceID=A&seq=1")
-    token = extract_track_token(seq1_html)
-
-    # Step 2: POST postcode, find pIndex
-    seq2_url = f"https://wav-wrp.whitespacews.com/mop.php?serviceID=A&Track={token}&seq=2"
-    seq2_html = fetch_html(seq2_url, method="post", data={
-        "address_postcode": postcode,
-        "address_name_number": house_number,
-    })
-    pindex = find_pindex(seq2_html, house_number)
-
-    # Step 3: fetch collection schedule
-    seq3_url = (
-        f"https://wav-wrp.whitespacews.com/mop.php"
-        f"?Track={token}&serviceID=A&seq=3&pIndex={pindex}"
-    )
-    seq3_html = fetch_html(seq3_url)
-    # Print the section of HTML most likely to contain collection data
-    idx = seq3_html.lower().find("collection")
-    snippet = seq3_html[max(0, idx - 200):idx + 2000] if idx != -1 else seq3_html[-3000:]
-    print(f"DEBUG seq3 HTML around 'collection':\n{snippet}", file=sys.stderr)
-    print(f"DEBUG u1 tags found: {seq3_html.lower().count('<u1')}, ul tags: {seq3_html.lower().count('<ul')}", file=sys.stderr)
-    entries = parse_collections(seq3_html)
-    print(f"Scraped {len(entries)} collection(s): {[(str(d), s) for d, s in entries]}")
-
-    # Check for tomorrow
     today = datetime.datetime.now(datetime.timezone.utc).date()
-    due_tomorrow = collections_tomorrow(entries, today)
+    tomorrow = today + datetime.timedelta(days=1)
+    due_tomorrow = scheduled_collections(tomorrow)
 
     if not due_tomorrow:
         print("No collections due tomorrow. Nothing to do.")
         sys.exit(0)
 
-    # Send reminder
-    tomorrow = today + datetime.timedelta(days=1)
     msg = compose_email(due_tomorrow, tomorrow, gmail_address, recipient)
     send_email(msg, gmail_address, gmail_app_password)
     print(f"Reminder sent for: {', '.join(due_tomorrow)}")
