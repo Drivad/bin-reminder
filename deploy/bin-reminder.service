@@ -1,0 +1,22 @@
+[Unit]
+Description=Waverley bin collection reminder
+Documentation=https://github.com/Drivad/bin-reminder
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=binbot
+Group=binbot
+WorkingDirectory=/opt/bin-reminder
+EnvironmentFile=/etc/bin-reminder.env
+ExecStart=/opt/bin-reminder/.venv/bin/python /opt/bin-reminder/scraper.py
+
+# Retry a few times if the network is not up yet after a reboot.
+Restart=on-failure
+RestartSec=120s
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full

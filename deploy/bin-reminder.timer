@@ -1,0 +1,12 @@
+[Unit]
+Description=Run the Waverley bin reminder every evening
+Documentation=https://github.com/Drivad/bin-reminder
+
+[Timer]
+# Local time, so BST/GMT is handled automatically - no more 10pm surprises.
+OnCalendar=*-*-* 18:00:00
+# If the Pi was powered off at 18:00, run as soon as it is back up.
+Persistent=true
+
+[Install]
+WantedBy=timers.target
