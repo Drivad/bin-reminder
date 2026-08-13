@@ -20,6 +20,30 @@ fortnightly cycle if it cannot reach it:
 Fallback emails are marked as estimates. Garden waste only works on the live
 path, which is the main reason to run it from home.
 
+## Checking it by hand
+
+You do not need any of the hardware below to just look up your collections.
+From any machine on home broadband:
+
+```sh
+pip install -r requirements.txt
+python scraper.py --list --postcode "GU8 5QQ" --house-number 7
+```
+
+```
+Upcoming collections (12 found):
+
+  Tue 18 Aug  Food Waste       (tomorrow)
+  Tue 18 Aug  Recycling        (tomorrow)
+  Thu 20 Aug  Garden Waste     (in 3 days)
+```
+
+No email is sent and no Gmail setup is needed. `--postcode` and
+`--house-number` fall back to the environment variables if omitted.
+
+This will fail with a `403` on a work VPN or a cloud machine - the council
+blocks those. Run it from home.
+
 ## Recommended setup: Raspberry Pi
 
 A Pi Zero 2 W (~£15) is enough — it draws under a watt and runs silently.

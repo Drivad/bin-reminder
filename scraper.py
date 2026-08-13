@@ -1,3 +1,4 @@
+import argparse
 import datetime
 import os
 import re
@@ -127,10 +128,13 @@ def scheduled_collections(date: datetime.date) -> list[str]:
     return services
 
 
-def scrape_schedule() -> list[tuple[datetime.date, str]]:
+def scrape_schedule(
+    postcode: str = None,
+    house_number: str = None,
+) -> list[tuple[datetime.date, str]]:
     """Run the 3-step portal scrape. Raises if the portal is unreachable."""
-    postcode = os.environ["POSTCODE"]
-    house_number = os.environ["HOUSE_NUMBER"]
+    postcode = postcode or os.environ["POSTCODE"]
+    house_number = house_number or os.environ["HOUSE_NUMBER"]
 
     seq1_html = fetch_html("https://wav-wrp.whitespacews.com/mop.php?serviceID=A&seq=1")
     token = extract_track_token(seq1_html)
@@ -149,7 +153,64 @@ def scrape_schedule() -> list[tuple[datetime.date, str]]:
     return parse_collections(fetch_html(seq3_url))
 
 
+def list_collections(postcode: str = None, house_number: str = None) -> int:
+    """Print upcoming collections. Returns a process exit code."""
+    try:
+        entries = scrape_schedule(postcode, house_number)
+    except Exception as e:  # noqa: BLE001 - surface the cause to the user
+        print(f"Could not reach the council portal: {type(e).__name__}: {e}", file=sys.stderr)
+        print(
+            "\nIf this says 403, you are on a connection the council blocks "
+            "(most likely a datacenter or VPN). Try again from home broadband.",
+            file=sys.stderr,
+        )
+        return 1
+
+    if not entries:
+        print("The portal returned no collections for that address.")
+        print("Double-check the postcode and house number.")
+        return 1
+
+    today = datetime.date.today()
+    print(f"Upcoming collections ({len(entries)} found):\n")
+    for date, service in sorted(entries):
+        days = (date - today).days
+        if days == 0:
+            when = "today"
+        elif days == 1:
+            when = "tomorrow"
+        elif days < 0:
+            continue  # already been and gone
+        else:
+            when = f"in {days} days"
+        print(f"  {date.strftime('%a %d %b')}  {short_name(service):<16} ({when})")
+    return 0
+
+
+def short_name(service: str) -> str:
+    """Strip the 'Collection Service' suffix for readable output."""
+    return re.sub(r"\s*collection service\s*$", "", service, flags=re.IGNORECASE).strip()
+
+
 def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Waverley bin collection reminder.",
+        epilog="With no arguments, emails a reminder if a collection is due tomorrow.",
+    )
+    parser.add_argument(
+        "--list",
+        action="store_true",
+        help="print upcoming collections and exit, without sending any email",
+    )
+    parser.add_argument("--postcode", help="overrides the POSTCODE environment variable")
+    parser.add_argument(
+        "--house-number", help="overrides the HOUSE_NUMBER environment variable"
+    )
+    args = parser.parse_args()
+
+    if args.list:
+        sys.exit(list_collections(args.postcode, args.house_number))
+
     gmail_address = os.environ["GMAIL_ADDRESS"]
     gmail_app_password = os.environ["GMAIL_APP_PASSWORD"]
     recipient = os.environ["RECIPIENT_EMAIL"]
