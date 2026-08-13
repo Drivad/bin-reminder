@@ -7,6 +7,10 @@ on:
 
 jobs:
   remind:
+    # The council portal's load balancer rejects datacenter IPs, so GitHub-hosted
+    # runners cannot reach it and the job falls back to the fortnightly maths
+    # (which cannot cover garden waste). Switch this to [self-hosted, linux] once
+    # a runner is registered on the home network to get full live data.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,6 +25,8 @@ jobs:
       - name: Run bin reminder
         run: python scraper.py
         env:
+          POSTCODE: ${{ secrets.POSTCODE }}
+          HOUSE_NUMBER: ${{ secrets.HOUSE_NUMBER }}
           GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           RECIPIENT_EMAIL: ${{ secrets.RECIPIENT_EMAIL }}

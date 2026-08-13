@@ -67,14 +67,16 @@ def compose_email(
     tomorrow: datetime.date,
     sender: str,
     recipient: str,
+    note: str = None,
 ) -> MIMEText:
     """Compose a plain-text reminder email."""
     date_str = tomorrow.strftime("%A %-d %B")  # e.g. "Tuesday 17 March"
     service_lines = "\n".join(f"- {s}" for s in services)
+    footer = f"{note}\n\n— Waverley bin bot" if note else "— Waverley bin bot"
     body = (
         f"Tomorrow's collections ({date_str}):\n"
         f"{service_lines}\n\n"
-        f"— Waverley bin bot"
+        f"{footer}"
     )
     # Specify UTF-8 charset directly in MIMEText
     msg = MIMEText(body, _charset="utf-8")
@@ -125,6 +127,28 @@ def scheduled_collections(date: datetime.date) -> list[str]:
     return services
 
 
+def scrape_schedule() -> list[tuple[datetime.date, str]]:
+    """Run the 3-step portal scrape. Raises if the portal is unreachable."""
+    postcode = os.environ["POSTCODE"]
+    house_number = os.environ["HOUSE_NUMBER"]
+
+    seq1_html = fetch_html("https://wav-wrp.whitespacews.com/mop.php?serviceID=A&seq=1")
+    token = extract_track_token(seq1_html)
+
+    seq2_url = f"https://wav-wrp.whitespacews.com/mop.php?serviceID=A&Track={token}&seq=2"
+    seq2_html = fetch_html(seq2_url, method="post", data={
+        "address_postcode": postcode,
+        "address_name_number": house_number,
+    })
+    pindex = find_pindex(seq2_html, house_number)
+
+    seq3_url = (
+        f"https://wav-wrp.whitespacews.com/mop.php"
+        f"?Track={token}&serviceID=A&seq=3&pIndex={pindex}"
+    )
+    return parse_collections(fetch_html(seq3_url))
+
+
 def main() -> None:
     gmail_address = os.environ["GMAIL_ADDRESS"]
     gmail_app_password = os.environ["GMAIL_APP_PASSWORD"]
@@ -132,13 +156,27 @@ def main() -> None:
 
     today = datetime.datetime.now(datetime.timezone.utc).date()
     tomorrow = today + datetime.timedelta(days=1)
-    due_tomorrow = scheduled_collections(tomorrow)
+
+    # Prefer live data: it is the only source that covers Garden Waste, which
+    # runs on a separate seasonal schedule the fortnightly maths cannot model.
+    note = None
+    try:
+        entries = scrape_schedule()
+        print(f"Scraped {len(entries)} collection(s) from portal.")
+        if not entries:
+            raise ValueError("portal returned no collections")
+        due_tomorrow = collections_tomorrow(entries, today)
+    except Exception as e:  # noqa: BLE001 - any failure falls back to maths
+        print(f"Live lookup unavailable ({type(e).__name__}: {e}).", file=sys.stderr)
+        print("Falling back to the hardcoded fortnightly schedule.", file=sys.stderr)
+        due_tomorrow = scheduled_collections(tomorrow)
+        note = "(Estimated from the fortnightly cycle - garden waste not included.)"
 
     if not due_tomorrow:
         print("No collections due tomorrow. Nothing to do.")
         sys.exit(0)
 
-    msg = compose_email(due_tomorrow, tomorrow, gmail_address, recipient)
+    msg = compose_email(due_tomorrow, tomorrow, gmail_address, recipient, note=note)
     send_email(msg, gmail_address, gmail_app_password)
     print(f"Reminder sent for: {', '.join(due_tomorrow)}")
 

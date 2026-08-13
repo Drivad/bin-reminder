@@ -168,6 +168,58 @@ def test_compose_email_body_contains_services():
         sender="bot@gmail.com",
         recipient="me@gmail.com",
     )
-    body = msg.get_payload()
+    body = msg.get_payload(decode=True).decode("utf-8")
     assert "Recycling Collection Service" in body
     assert "Tuesday 17 March" in body
+
+
+from scraper import scheduled_collections
+
+
+def test_scheduled_collections_anchor_is_recycling():
+    # 4 Aug 2026 is the known anchor: Food Waste + Recycling
+    assert scheduled_collections(datetime.date(2026, 8, 4)) == [
+        "Food Waste Collection Service",
+        "Recycling Collection Service",
+    ]
+
+
+def test_scheduled_collections_alternates_to_domestic():
+    # One week after the anchor swaps Recycling for Domestic Waste
+    assert scheduled_collections(datetime.date(2026, 8, 11)) == [
+        "Food Waste Collection Service",
+        "Domestic Waste Collection Service",
+    ]
+
+
+def test_scheduled_collections_returns_to_recycling_after_fortnight():
+    assert scheduled_collections(datetime.date(2026, 8, 18)) == [
+        "Food Waste Collection Service",
+        "Recycling Collection Service",
+    ]
+
+
+def test_scheduled_collections_works_before_the_anchor():
+    # 28 Jul 2026 is one week before the anchor, so Domestic
+    assert scheduled_collections(datetime.date(2026, 7, 28)) == [
+        "Food Waste Collection Service",
+        "Domestic Waste Collection Service",
+    ]
+
+
+def test_scheduled_collections_empty_on_non_tuesday():
+    for day in range(1, 8):
+        date = datetime.date(2026, 8, 2) + datetime.timedelta(days=day - 1)
+        if date.weekday() != 1:
+            assert scheduled_collections(date) == []
+
+
+def test_compose_email_includes_note_when_given():
+    msg = compose_email(
+        services=["Food Waste Collection Service"],
+        tomorrow=datetime.date(2026, 8, 11),
+        sender="bot@gmail.com",
+        recipient="me@gmail.com",
+        note="(Estimated.)",
+    )
+    assert "(Estimated.)" in msg.get_payload(decode=True).decode("utf-8")
