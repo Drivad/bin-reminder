@@ -128,14 +128,11 @@ def scheduled_collections(date: datetime.date) -> list[str]:
     return services
 
 
-def scrape_schedule(
-    postcode: str = None,
-    house_number: str = None,
-) -> list[tuple[datetime.date, str]]:
-    """Run the 3-step portal scrape. Raises if the portal is unreachable."""
-    postcode = postcode or os.environ["POSTCODE"]
-    house_number = house_number or os.environ["HOUSE_NUMBER"]
+def lookup_property(postcode: str, house_number: str) -> tuple[str, str]:
+    """Return (track_token, pindex) for an address. Steps 1 and 2 of the scrape.
 
+    The pindex is stable for a property; only the token changes per session.
+    """
     seq1_html = fetch_html("https://wav-wrp.whitespacews.com/mop.php?serviceID=A&seq=1")
     token = extract_track_token(seq1_html)
 
@@ -144,8 +141,11 @@ def scrape_schedule(
         "address_postcode": postcode,
         "address_name_number": house_number,
     })
-    pindex = find_pindex(seq2_html, house_number)
+    return token, find_pindex(seq2_html, house_number)
 
+
+def fetch_collections(token: str, pindex: str) -> list[tuple[datetime.date, str]]:
+    """Step 3 of the scrape: read the schedule for an already-resolved property."""
     seq3_url = (
         f"https://wav-wrp.whitespacews.com/mop.php"
         f"?Track={token}&serviceID=A&seq=3&pIndex={pindex}"
@@ -153,10 +153,24 @@ def scrape_schedule(
     return parse_collections(fetch_html(seq3_url))
 
 
+def scrape_schedule(
+    postcode: str = None,
+    house_number: str = None,
+) -> list[tuple[datetime.date, str]]:
+    """Run the full 3-step portal scrape. Raises if the portal is unreachable."""
+    postcode = postcode or os.environ["POSTCODE"]
+    house_number = house_number or os.environ["HOUSE_NUMBER"]
+    token, pindex = lookup_property(postcode, house_number)
+    return fetch_collections(token, pindex)
+
+
 def list_collections(postcode: str = None, house_number: str = None) -> int:
     """Print upcoming collections. Returns a process exit code."""
     try:
-        entries = scrape_schedule(postcode, house_number)
+        postcode = postcode or os.environ["POSTCODE"]
+        house_number = house_number or os.environ["HOUSE_NUMBER"]
+        token, pindex = lookup_property(postcode, house_number)
+        entries = fetch_collections(token, pindex)
     except Exception as e:  # noqa: BLE001 - surface the cause to the user
         print(f"Could not reach the council portal: {type(e).__name__}: {e}", file=sys.stderr)
         print(
@@ -184,6 +198,10 @@ def list_collections(postcode: str = None, house_number: str = None) -> int:
         else:
             when = f"in {days} days"
         print(f"  {date.strftime('%a %d %b')}  {short_name(service):<16} ({when})")
+
+    # The pindex is fixed for a property, so it can be hardcoded into an iOS
+    # Shortcut to skip the address lookup entirely. See README.
+    print(f"\nYour pIndex is {pindex} (needed for the iPhone Shortcut).")
     return 0
 
 
