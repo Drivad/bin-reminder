@@ -51,27 +51,56 @@ killed. But Shortcuts can make the requests itself, and because it runs on the
 phone it uses your home wifi, which the council portal accepts. No hardware,
 no server, no Gmail.
 
+The portal is a three-step session flow and the Shortcut has to walk all three:
+get a `Track` token, **bind that token to your address**, then read the schedule.
+Step 4 below is easy to skip and skipping it is silent - see the warning after
+the table.
+
 First get your `pIndex`, which is fixed for your property. Run `--list` from a
 laptop at home and it prints it at the bottom. Then build this in Shortcuts,
-replacing `YOUR_PINDEX`:
+replacing `YOUR_PINDEX`, `YOUR_POSTCODE` and `YOUR_HOUSE_NUMBER`:
 
 | # | Action | Settings |
 |---|---|---|
 | 1 | **Get Contents of URL** | `https://wav-wrp.whitespacews.com/mop.php?serviceID=A&seq=1` |
 | 2 | **Match Text** | Pattern: `Track=([^&"]+)` |
 | 3 | **Get Group from Matched Text** | Group `1`. Wrap in *Get First Item from List* if it returns several. |
-| 4 | **Get Contents of URL** | `https://wav-wrp.whitespacews.com/mop.php?Track=[group from step 3]&serviceID=A&seq=3&pIndex=YOUR_PINDEX` |
-| 5 | **Match Text** | Pattern: `(\d{2}/\d{2}/\d{4})[\s\S]{0,300}?([A-Z][A-Za-z ]*?Collection Service)` |
-| 6 | **Repeat with Each** | over the matches from step 5 |
-| 7 | ↳ **Get Group from Matched Text** | Group `1` - the date |
-| 8 | ↳ **Get Group from Matched Text** | Group `2` - the service |
-| 9 | ↳ **Add to Variable** | e.g. `results`, combining the two |
-| 10 | **Show Result** / **Speak Text** | the `results` variable |
+| 4 | **Get Contents of URL** | `https://wav-wrp.whitespacews.com/mop.php?serviceID=A&Track=[group from step 3]&seq=2` |
+| | ↳ Method | `POST` |
+| | ↳ Request Body | **Form** - `address_postcode` = `YOUR_POSTCODE`, `address_name_number` = `YOUR_HOUSE_NUMBER` |
+| 5 | **Get Contents of URL** | `https://wav-wrp.whitespacews.com/mop.php?Track=[group from step 3]&serviceID=A&seq=3&pIndex=YOUR_PINDEX` |
+| 6 | **Match Text** | Pattern: `(\d{2}/\d{2}/\d{4})[\s\S]{0,300}?([A-Z][A-Za-z ]*?Collection Service)` |
+| 7 | **Repeat with Each** | over the matches from step 6 |
+| 8 | ↳ **Get Group from Matched Text** | Group `1` - the date |
+| 9 | ↳ **Get Group from Matched Text** | Group `2` - the service |
+| 10 | ↳ **Add to Variable** | e.g. `results`, combining the two |
+| 11 | **Show Result** / **Speak Text** | the `results` variable |
 
 Name it "When are the bins" and Siri will answer to that phrase.
 
-Both regexes above are verified to produce the same output as `parse_collections()`
-on the portal's HTML, so if the Python side works, these should too.
+### If it says there are no collections
+
+You almost certainly skipped step 4, the `seq=2` POST. **`pIndex` on its own does
+not identify your property** - it only picks between addresses already resolved
+for that token, so the token must be bound to an address first.
+
+Skipping it fails silently rather than erroring. `seq=3` still returns HTTP `200`
+and a perfectly valid page reading *"Sorry - there are no scheduled services at
+this address"*, which is easy to misread as your address genuinely having no
+schedule. Measured against the real portal: without step 4 the page is ~11 KB with
+one `<ul>` and zero collections; with it, ~21 KB, eleven `<ul>`s and ten
+collections.
+
+Step 4's own output is not used - it exists only for its side effect on the
+session. The binding is held server-side against the `Track` token and does *not*
+depend on cookies (a `seq=3` request from a cookieless session with the same token
+still returns the full schedule), so it does not matter that Shortcuts will not
+reliably carry cookies between *Get Contents of URL* actions.
+
+Both regexes above were checked against real portal HTML - not just the test
+fixture - and produce output identical to `parse_collections()`. Note that the
+regexes being right is not enough on its own: the original version of this recipe
+had correct regexes but omitted step 4, and so always returned nothing.
 
 You *can* put this on a daily time automation, but Shortcuts automations
 silently skip often enough that it is worth pairing with a real scheduled job
