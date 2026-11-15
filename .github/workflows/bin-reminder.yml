@@ -11,10 +11,10 @@ on:
 
 jobs:
   remind:
-    # The council portal's load balancer rejects datacenter IPs, so GitHub-hosted
-    # runners cannot reach it and the job falls back to the fortnightly maths
-    # (which cannot cover garden waste). Switch this to [self-hosted, linux] once
-    # a runner is registered on the home network to get full live data.
+    # Runs entirely on GitHub's runners. The council's booking portal rejects
+    # datacenter IPs, so collection dates are derived arithmetically, but the
+    # council's own website is reachable and supplies bank-holiday changes.
+    # Nothing here depends on a machine at home.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
