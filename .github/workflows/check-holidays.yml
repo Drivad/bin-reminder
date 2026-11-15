@@ -1,0 +1,17 @@
+name: Check Holiday Changes
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '23 7 * * 1'  # Mondays, to catch the festive table being published
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r requirements.txt
+      - run: python scraper.py --holidays

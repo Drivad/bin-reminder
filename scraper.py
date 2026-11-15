@@ -11,6 +11,8 @@ import requests
 from bs4 import BeautifulSoup
 from email.mime.text import MIMEText
 
+import holidays
+
 def extract_track_token(html: str) -> str:
     """Extract the Track session token from the seq=1 page HTML."""
     soup = BeautifulSoup(html, "html.parser")
@@ -282,6 +284,80 @@ def short_name(service: str) -> str:
     return re.sub(r"\s*collection service\s*$", "", service, flags=re.IGNORECASE).strip()
 
 
+def apply_holiday_changes(
+    due: list[str],
+    today: datetime.date,
+    base_for: callable,
+) -> tuple[list[str], str]:
+    """Correct tomorrow's collections for published bank-holiday moves.
+
+    The council site is reachable from CI even though the portal is not, so
+    this works with no device at home. Returns (services, note_for_email).
+    """
+    tomorrow = today + datetime.timedelta(days=1)
+    try:
+        html = fetch_html(holidays.BINS_PAGE)
+        changes = holidays.parse_holiday_changes(html, today)
+    except Exception as e:  # noqa: BLE001 - never let this break the reminder
+        print(f"Could not check for holiday changes ({type(e).__name__}: {e}).", file=sys.stderr)
+        if holidays.in_festive_window(tomorrow):
+            return due, (
+                "WARNING: could not reach the council site to check for "
+                "Christmas collection changes, and these dates are NOT adjusted "
+                "for them. Check waverley.gov.uk before putting bins out."
+            )
+        return due, None
+
+    if not changes:
+        # Finding nothing mid-festive-season means the parser missed the table,
+        # not that there are no changes. Say so rather than be quietly wrong.
+        if holidays.in_festive_window(tomorrow):
+            print("WARNING: festive period but no holiday changes parsed.", file=sys.stderr)
+            return due, (
+                "WARNING: no Christmas collection changes could be read from the "
+                "council site, which is unexpected at this time of year. These "
+                "dates may be wrong - check waverley.gov.uk."
+            )
+        return due, None
+
+    adjusted = holidays.adjust(tomorrow, changes, base_for)
+    if adjusted != due:
+        print(f"Holiday adjustment applied: {due} -> {adjusted}")
+        moved = {u: r for u, r in changes.items() if tomorrow in (u, r)}
+        return adjusted, (
+            "Adjusted for the council's Christmas collection changes "
+            f"({'; '.join(f'{u:%a %d %b} moves to {r:%a %d %b}' for u, r in moved.items())})."
+        )
+    return due, None
+
+
+def show_holidays() -> int:
+    """Print bank-holiday changes read from the council site. Diagnostic."""
+    today = datetime.date.today()
+    print(f"Fetching {holidays.BINS_PAGE}")
+    try:
+        html = fetch_html(holidays.BINS_PAGE)
+    except Exception as e:  # noqa: BLE001 - diagnostic, report anything
+        print(f"FAILED: {type(e).__name__}: {e}", file=sys.stderr)
+        return 1
+    print(f"Fetched {len(html):,} bytes.")
+
+    changes = holidays.parse_holiday_changes(html, today)
+    if not changes:
+        print("No holiday changes parsed.")
+        if holidays.in_festive_window(today):
+            print("This is UNEXPECTED during the festive period - the parser "
+                  "may no longer match the page.", file=sys.stderr)
+            return 1
+        print("That is normal outside December/January.")
+        return 0
+
+    print(f"\n{len(changes)} change(s) published:")
+    for usual, revised in sorted(changes.items()):
+        print(f"  {usual:%a %d %b %Y}  ->  {revised:%a %d %b %Y}")
+    return 0
+
+
 def resolve_due(
     today: datetime.date,
 ) -> tuple[list[str], str]:
@@ -337,11 +413,17 @@ def resolve_due(
         print(f"Live lookup unavailable ({type(e).__name__}: {e}).", file=sys.stderr)
 
     print("Falling back to the fortnightly estimate.", file=sys.stderr)
-    return scheduled_collections(tomorrow), (
-        "(Estimated from the fortnightly cycle - garden waste and bank-holiday "
-        "changes are NOT included. Run 'python scraper.py --list' from home and "
-        "push the result to fix this.)"
+    due = scheduled_collections(tomorrow)
+    # The estimate knows nothing about bank holidays, so this correction is
+    # most valuable exactly here.
+    due, holiday_note = apply_holiday_changes(due, today, scheduled_collections)
+    note = (
+        "(Estimated from the fortnightly cycle - garden waste is NOT included. "
+        "Run 'python scraper.py --list' from home and push the result to fix this.)"
     )
+    if holiday_note:
+        note = f"{holiday_note}\n\n{note}"
+    return due, note
 
 
 def main() -> None:
@@ -355,11 +437,20 @@ def main() -> None:
         help="fetch from the portal, print upcoming collections and save them "
         "to schedule.json; sends no email. Run this from home broadband.",
     )
+    parser.add_argument(
+        "--holidays",
+        action="store_true",
+        help="print the bank-holiday collection changes read from the council "
+        "site and exit; sends no email",
+    )
     parser.add_argument("--postcode", help="overrides the POSTCODE environment variable")
     parser.add_argument(
         "--house-number", help="overrides the HOUSE_NUMBER environment variable"
     )
     args = parser.parse_args()
+
+    if args.holidays:
+        sys.exit(show_holidays())
 
     if args.list:
         sys.exit(list_collections(args.postcode, args.house_number))
