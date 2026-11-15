@@ -79,9 +79,11 @@ Two things it deliberately refuses to do quietly:
 The `Check Holiday Changes` workflow runs this weekly against the live page, so
 a breakage surfaces before it matters.
 
-## Refreshing the schedule
+## Optional: a real fetch from the portal
 
-Every few weeks, from any machine on home broadband:
+Everything above runs without this. But if you ever happen to be on home
+broadband, a real fetch from the portal will override the derived dates, and
+real data always wins:
 
 ```sh
 python scraper.py --list --postcode "GU8 5QQ" --house-number 7
@@ -92,19 +94,18 @@ git add schedule.json && git commit -m "Refresh schedule" && git push
 Upcoming collections (12 found):
 
   Tue 17 Nov  Food Waste       (tomorrow)
-  Tue 17 Nov  Recycling        (tomorrow)
+  Tue 17 Nov  Domestic Waste   (tomorrow)
   Thu 19 Nov  Garden Waste     (in 3 days)
 
 Your pIndex is 1 (needed for the iPhone Shortcut).
 Saved 12 collections to schedule.json, through Tue 08 Dec.
 ```
 
-No email is sent and no Gmail setup is needed. The reminder emails warn you
-two weeks before the saved schedule runs out, so you get told when to do this
-rather than having to remember.
+It is also the only way to confirm your garden-waste subscription is still
+active - nothing reachable from a server can see that.
 
-This will fail with a `403` on a work VPN or a cloud machine - the council
-blocks those. Run it from home.
+This fails with a `403` on a work VPN or any cloud machine; the council blocks
+those. It needs a residential connection.
 
 ## iPhone Shortcut ("Hey Siri, when are the bins?")
 
@@ -113,82 +114,73 @@ killed. But Shortcuts can make the requests itself, and because it runs on the
 phone it uses your home wifi, which the council portal accepts. No hardware,
 no server, no Gmail.
 
+The portal is a three-step session flow and the Shortcut has to walk all three:
+get a `Track` token, **bind that token to your address**, then read the schedule.
+Step 4 below is easy to skip and skipping it is silent - see the warning after
+the table.
+
 First get your `pIndex`, which is fixed for your property. Run `--list` from a
 laptop at home and it prints it at the bottom. Then build this in Shortcuts,
-replacing `YOUR_PINDEX`:
+replacing `YOUR_PINDEX`, `YOUR_POSTCODE` and `YOUR_HOUSE_NUMBER`:
 
 | # | Action | Settings |
 |---|---|---|
 | 1 | **Get Contents of URL** | `https://wav-wrp.whitespacews.com/mop.php?serviceID=A&seq=1` |
 | 2 | **Match Text** | Pattern: `Track=([^&"]+)` |
 | 3 | **Get Group from Matched Text** | Group `1`. Wrap in *Get First Item from List* if it returns several. |
-| 4 | **Get Contents of URL** | `https://wav-wrp.whitespacews.com/mop.php?Track=[group from step 3]&serviceID=A&seq=3&pIndex=YOUR_PINDEX` |
-| 5 | **Match Text** | Pattern: `(\d{2}/\d{2}/\d{4})[\s\S]{0,300}?([A-Z][A-Za-z ]*?Collection Service)` |
-| 6 | **Repeat with Each** | over the matches from step 5 |
-| 7 | ↳ **Get Group from Matched Text** | Group `1` - the date |
-| 8 | ↳ **Get Group from Matched Text** | Group `2` - the service |
-| 9 | ↳ **Add to Variable** | e.g. `results`, combining the two |
-| 10 | **Show Result** / **Speak Text** | the `results` variable |
+| 4 | **Get Contents of URL** | `https://wav-wrp.whitespacews.com/mop.php?serviceID=A&Track=[group from step 3]&seq=2` |
+| | ↳ Method | `POST` |
+| | ↳ Request Body | **Form** - `address_postcode` = `YOUR_POSTCODE`, `address_name_number` = `YOUR_HOUSE_NUMBER` |
+| 5 | **Get Contents of URL** | `https://wav-wrp.whitespacews.com/mop.php?Track=[group from step 3]&serviceID=A&seq=3&pIndex=YOUR_PINDEX` |
+| 6 | **Match Text** | Pattern: `(\d{2}/\d{2}/\d{4})[\s\S]{0,300}?([A-Z][A-Za-z ]*?Collection Service)` |
+| 7 | **Repeat with Each** | over the matches from step 6 |
+| 8 | ↳ **Get Group from Matched Text** | Group `1` - the date |
+| 9 | ↳ **Get Group from Matched Text** | Group `2` - the service |
+| 10 | ↳ **Add to Variable** | e.g. `results`, combining the two |
+| 11 | **Show Result** / **Speak Text** | the `results` variable |
 
 Name it "When are the bins" and Siri will answer to that phrase.
 
-Both regexes above are verified to produce the same output as `parse_collections()`
-on the portal's HTML, so if the Python side works, these should too.
+### If it says there are no collections
+
+You almost certainly skipped step 4, the `seq=2` POST. **`pIndex` on its own does
+not identify your property** - it only picks between addresses already resolved
+for that token, so the token must be bound to an address first.
+
+Skipping it fails silently rather than erroring. `seq=3` still returns HTTP `200`
+and a perfectly valid page reading *"Sorry - there are no scheduled services at
+this address"*, which is easy to misread as your address genuinely having no
+schedule. Measured against the real portal: without step 4 the page is ~11 KB with
+one `<ul>` and zero collections; with it, ~21 KB, eleven `<ul>`s and ten
+collections.
+
+Step 4's own output is not used - it exists only for its side effect on the
+session. The binding is held server-side against the `Track` token and does *not*
+depend on cookies (a `seq=3` request from a cookieless session with the same token
+still returns the full schedule), so it does not matter that Shortcuts will not
+reliably carry cookies between *Get Contents of URL* actions.
+
+Both regexes above were checked against real portal HTML - not just the test
+fixture - and produce output identical to `parse_collections()`. Note that the
+regexes being right is not enough on its own: the original version of this recipe
+had correct regexes but omitted step 4, and so always returned nothing.
 
 You *can* put this on a daily time automation, but Shortcuts automations
 silently skip often enough that it is worth pairing with a real scheduled job
 rather than relying on it alone.
 
-## Recommended setup: Raspberry Pi
+## Scheduling
 
-A Pi is now optional. With the saved schedule above, the GitHub Actions job
-covers everything, and a Pi only buys you automatic refreshes and exact
-delivery times. Worth it if GitHub's scheduler drift annoys you - it has run
-this job up to nine hours late.
+`.github/workflows/bin-reminder.yml` runs daily at 06:37 UTC and is the whole
+deployment - there is nothing to install and nothing of yours to keep running.
 
-A Pi Zero 2 W (~£15) is enough — it draws under a watt and runs silently.
+The time is deliberately early and on an odd minute. GitHub's scheduler was
+observed firing this job between 4h32m and 9h11m late every day for a week,
+which was landing reminders between 18:32 and 23:11. Firing early means even
+the worst drift seen still arrives in the afternoon.
 
-1. Flash **Raspberry Pi OS Lite (64-bit)**. The 32-bit build is fine here,
-   but 64-bit keeps the option of a GitHub runner open later.
-   Enable SSH and your wifi in the Imager's advanced settings.
-
-2. On the Pi:
-
-   ```sh
-   git clone https://github.com/Drivad/bin-reminder.git
-   cd bin-reminder
-   sudo ./deploy/install.sh
-   ```
-
-3. Fill in your address and Gmail credentials:
-
-   ```sh
-   sudo nano /etc/bin-reminder.env
-   ```
-
-   `GMAIL_APP_PASSWORD` must be a Google [app password](https://myaccount.google.com/apppasswords),
-   not your account password.
-
-4. Test it, without waiting for the timer:
-
-   ```sh
-   sudo systemctl start bin-reminder.service
-   journalctl -u bin-reminder.service -n 30 --no-pager
-   ```
-
-The timer fires at 18:00 **local** time, so BST and GMT are handled
-automatically. If the Pi is off at 18:00 it runs as soon as it is back up.
-
-Change the time by editing `OnCalendar` in
-`/etc/systemd/system/bin-reminder.timer`, then `sudo systemctl daemon-reload`.
-
-To update later: `git pull && sudo ./deploy/install.sh`.
-
-## GitHub Actions (backup)
-
-`.github/workflows/bin-reminder.yml` still runs daily as a safety net, but from
-GitHub's runners it can only ever send the estimated fallback, and its schedule
-can drift by hours. Disable it in the Actions tab once the Pi is working.
+`check-holidays.yml` runs weekly and prints what the council's festive table
+currently says, so a parser breakage surfaces before it matters.
 
 ## Development
 
@@ -197,5 +189,8 @@ pip install -r requirements.txt
 pytest tests/ -q
 ```
 
-`api.py` is a small Flask endpoint (`/ask?q=...`) that answers questions like
-"when is the recycling" for use from a Siri shortcut.
+`api.py` is a small Flask endpoint (`/ask?q=...`) answering questions like
+"when is the recycling", for a Siri shortcut. **It is currently non-functional
+when hosted**: it scrapes the portal directly, so from any server it gets the
+same `403` as everything else. It would work if pointed at
+`scraper.resolve_due()` like the reminder is.
