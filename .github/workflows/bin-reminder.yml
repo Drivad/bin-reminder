@@ -2,7 +2,11 @@ name: Bin Collection Reminder
 
 on:
   schedule:
-    - cron: '0 14 * * *'  # 2pm UTC daily / 3pm BST (absorbs GitHub scheduler delays)
+    # GitHub's scheduler has been firing this 4.5-9h late every day, so the
+    # reminder was landing between 18:30 and 23:11. Drift is worst on the hour
+    # and at peak times, so fire early at an odd minute: even a 9h delay then
+    # lands mid-afternoon rather than near midnight.
+    - cron: '37 6 * * *'
   workflow_dispatch:        # allows manual trigger for testing
 
 jobs:
