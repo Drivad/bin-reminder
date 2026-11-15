@@ -19,8 +19,43 @@ the nightly job just reads the saved copy - which works anywhere, CI included.
 | live portal scrape | everything | a residential connection |
 | fortnightly estimate | food / recycling / domestic only | nothing |
 
+Whichever is used, **bank-holiday changes are applied on top**, read from the
+council's own website. That part needs no home connection: `waverley.gov.uk` is
+ordinary on-premise hosting and answers datacenter IPs fine - it is only the
+third-party booking portal at `whitespacews.com` that blocks them. See
+[docs/FINDINGS.md](docs/FINDINGS.md) for the full survey of what is and is not
+reachable remotely.
+
 If the saved schedule runs out, emails say so explicitly and fall back to the
 estimate, rather than quietly dropping garden waste.
+
+## Bank holidays and Christmas
+
+Over Christmas the council publishes a "usual day → revised day" table on its
+bins page. `holidays.py` reads it and shifts collections accordingly:
+
+```sh
+python scraper.py --holidays
+```
+
+```
+11 change(s) published:
+  Fri 25 Dec 2026  ->  Mon 28 Dec 2026
+  Tue 29 Dec 2026  ->  Wed 30 Dec 2026
+  ...
+```
+
+Two things it deliberately refuses to do quietly:
+
+- **Stale tables are rejected.** The council has been observed serving last
+  year's table beside this year's, so every row's weekday is checked against
+  the year it claims to cover. A row that does not match is dropped.
+- **Parsing nothing in December or January is an alarm**, not a quiet "no
+  changes" - the email says the dates may be wrong rather than being
+  confidently a day out over Christmas.
+
+The `Check Holiday Changes` workflow runs this weekly against the live page, so
+a breakage surfaces before it matters.
 
 ## Refreshing the schedule
 
