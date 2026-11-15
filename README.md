@@ -31,27 +31,25 @@ estimate, rather than quietly dropping garden waste.
 
 ## Garden waste
 
-Garden waste is derived arithmetically, like the other bins, because the portal
-that would confirm it is unreachable from CI. Two things were worked out rather
-than looked up, both in `scraper.py`:
+Garden waste runs on a **different day from the other bins**: Thursday,
+fortnightly, against Tuesday for everything else. That is observed, not
+assumed - the fixtures in `tests/` were captured from the live portal for this
+property (their session token is dated `2026/03/12`) and show Garden Waste on
+Thursday 12 and Thursday 26 March 2026, with Food and Recycling on the
+Tuesdays between.
 
-**The zone.** The council's Week 1 calendar puts recycling on the weeks of 12
-and 26 January 2026, which makes the week of 3 August a general-waste week in
-that zone. This property had recycling on Tuesday 4 August, so it is **Week 2**.
-Garden waste runs fortnightly on the same zone split.
+It also pins the zone twice over. The council's Week 1 calendar puts recycling
+on the weeks of 12 and 26 January 2026, making the week of 3 August a
+general-waste week in that zone - and this property had recycling on Tuesday
+4 August, so it is **Week 2**. Week 2's garden fortnights begin the weeks of
+9 and 23 March, whose Thursdays are exactly the two fixture dates.
 
-**The weekday — this is the assumption to watch.** The council publishes no
-per-property collection day anywhere; the garden calendar leaves a blank
-`Collection day:` field for the resident to write in. `_GARDEN_ANCHOR` assumes
-garden waste arrives on the same Tuesday as everything else. If it actually
-comes on a different day, that one line is the fix, and nothing else changes.
+The published winter suspensions (21 Dec 2026 - 1 Jan 2027, and 20 Dec 2027 -
+2 Jan 2028) are encoded. A suspended collection is dropped rather than
+deferred: the fortnightly parity carries straight on afterwards.
 
-The published winter suspensions (21 Dec 2026 – 1 Jan 2027, and
-20 Dec 2027 – 2 Jan 2028) are encoded. A suspended collection is dropped rather
-than deferred: the fortnightly parity carries straight on afterwards.
-
-A `schedule.json` fetched from the portal always overrides all of this, so if
-the real data ever becomes available it wins.
+A `schedule.json` fetched from the portal overrides all of this, so real data
+always wins where it is available.
 
 ## Bank holidays and Christmas
 

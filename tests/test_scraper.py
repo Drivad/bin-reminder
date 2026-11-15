@@ -187,11 +187,9 @@ def test_scheduled_collections_anchor_is_recycling():
 
 def test_scheduled_collections_alternates_to_domestic():
     # One week after the anchor swaps Recycling for Domestic Waste.
-    # Garden waste also falls on this date on its own fortnightly parity.
     assert scheduled_collections(datetime.date(2026, 8, 11)) == [
         "Food Waste Collection Service",
         "Domestic Waste Collection Service",
-        "Garden Waste Collection Service",
     ]
 
 
@@ -203,12 +201,10 @@ def test_scheduled_collections_returns_to_recycling_after_fortnight():
 
 
 def test_scheduled_collections_works_before_the_anchor():
-    # 28 Jul 2026 is one week before the anchor, so Domestic. Garden waste is
-    # also due that day on its own parity.
+    # 28 Jul 2026 is one week before the anchor, so Domestic.
     assert scheduled_collections(datetime.date(2026, 7, 28)) == [
         "Food Waste Collection Service",
         "Domestic Waste Collection Service",
-        "Garden Waste Collection Service",
     ]
 
 
@@ -301,46 +297,46 @@ def test_cache_warn_days_gives_time_to_refresh():
 from scraper import garden_due
 
 
-def test_garden_waste_on_the_anchor():
-    assert garden_due(datetime.date(2026, 11, 17)) is True
+def test_garden_matches_the_captured_portal_fixtures():
+    # tests/ fixtures were captured live for this property and show Garden
+    # Waste on these two Thursdays. This is the ground truth for the anchor.
+    assert garden_due(datetime.date(2026, 3, 12)) is True
+    assert garden_due(datetime.date(2026, 3, 26)) is True
 
 
-def test_garden_waste_is_fortnightly_not_weekly():
-    assert garden_due(datetime.date(2026, 11, 24)) is False
-    assert garden_due(datetime.date(2026, 12, 1)) is True
+def test_garden_is_on_thursday_not_the_refuse_day():
+    # The Tuesday between the two fixture dates has refuse but no garden.
+    assert garden_due(datetime.date(2026, 3, 17)) is False
+    assert "Garden Waste Collection Service" not in scheduled_collections(
+        datetime.date(2026, 3, 17)
+    )
 
 
-def test_garden_waste_works_backwards_from_the_anchor():
-    assert garden_due(datetime.date(2026, 11, 3)) is True
-    assert garden_due(datetime.date(2026, 10, 20)) is True
-    assert garden_due(datetime.date(2026, 10, 27)) is False
+def test_garden_is_fortnightly_not_weekly():
+    assert garden_due(datetime.date(2026, 3, 19)) is False
+    assert garden_due(datetime.date(2026, 4, 9)) is True
 
 
-def test_garden_waste_not_on_other_weekdays():
-    for offset in range(1, 7):
-        assert garden_due(datetime.date(2026, 11, 17) + datetime.timedelta(days=offset)) is False
+def test_garden_appears_on_its_own_without_refuse():
+    # A garden Thursday has garden waste and nothing else.
+    assert scheduled_collections(datetime.date(2026, 11, 19)) == [
+        "Garden Waste Collection Service"
+    ]
 
 
-def test_garden_waste_suspended_over_new_year():
-    # Tue 29 Dec 2026 would be due on parity, but falls in the published
-    # 21 Dec - 1 Jan suspension.
-    assert (datetime.date(2026, 12, 29) - datetime.date(2026, 11, 17)).days % 14 == 0
-    assert garden_due(datetime.date(2026, 12, 29)) is False
+def test_garden_suspended_over_new_year():
+    # Thu 31 Dec 2026 is due on parity but falls in the published suspension.
+    assert (datetime.date(2026, 12, 31) - datetime.date(2026, 3, 12)).days % 14 == 0
+    assert garden_due(datetime.date(2026, 12, 31)) is False
 
 
 def test_garden_parity_resumes_after_suspension_rather_than_shifting():
-    # A suppressed collection is dropped, not deferred: the next one is on the
-    # original fortnightly parity.
-    assert garden_due(datetime.date(2027, 1, 12)) is True
-    assert garden_due(datetime.date(2027, 1, 5)) is False
+    assert garden_due(datetime.date(2027, 1, 14)) is True
+    assert garden_due(datetime.date(2027, 1, 7)) is False
 
 
-def test_scheduled_collections_includes_garden_when_due():
-    services = scheduled_collections(datetime.date(2026, 11, 17))
-    assert "Garden Waste Collection Service" in services
-
-
-def test_scheduled_collections_omits_garden_when_not_due():
-    services = scheduled_collections(datetime.date(2026, 11, 24))
-    assert "Garden Waste Collection Service" not in services
-    assert "Food Waste Collection Service" in services
+def test_refuse_tuesdays_are_unaffected_by_garden():
+    assert scheduled_collections(datetime.date(2026, 11, 17)) == [
+        "Food Waste Collection Service",
+        "Domestic Waste Collection Service",
+    ]

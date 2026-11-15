@@ -182,20 +182,15 @@ def schedule_covers(entries: list[tuple[datetime.date, str]], date: datetime.dat
 #   anchor + 7, 21, 35, ... days → Food Waste + Domestic Waste
 _RECYCLING_ANCHOR = datetime.date(2026, 8, 4)
 
-# Garden waste, derived rather than confirmed - see README "Garden waste".
+# Garden waste comes on a DIFFERENT DAY from the other bins: Thursday, not
+# Tuesday, fortnightly. That is observed data, not a guess - the fixtures in
+# tests/ were captured from the live portal for this property (their session
+# token is dated 2026/03/12) and show Garden Waste on Thu 12 and Thu 26 March
+# 2026, against Food/Recycling on the Tuesdays.
 #
-# The council's Week 1 calendar puts recycling on the weeks of 12 and 26 Jan
-# 2026, which makes the week of 3 Aug a general-waste week in that zone. This
-# property had recycling on Tue 4 Aug, so it is in ZONE WEEK 2. Garden waste
-# runs fortnightly on the same zone split, on the opposite fortnight to Week 1
-# (whose 2026 collections fall on the weeks of 5 Jan, 19 Jan ... 7 Dec).
-#
-# The one thing the council does not publish anywhere is which WEEKDAY a
-# property is collected on - the garden calendar leaves a blank "Collection
-# day:" field for the resident to fill in. This assumes the same Tuesday as the
-# refuse collection. If garden waste actually arrives on a different day, this
-# anchor is the single line to correct.
-_GARDEN_ANCHOR = datetime.date(2026, 11, 17)
+# It corroborates the zone independently: Week 2's garden fortnights begin the
+# weeks of 9 and 23 March, whose Thursdays are exactly those two dates.
+_GARDEN_ANCHOR = datetime.date(2026, 3, 12)
 
 # Printed on the garden calendars; no collections at all in these windows.
 _GARDEN_SUSPENSIONS = [
@@ -219,16 +214,23 @@ def garden_due(date: datetime.date) -> bool:
 
 
 def scheduled_collections(date: datetime.date) -> list[str]:
-    """Return collection service names for a given date using hardcoded fortnightly schedule."""
-    if date.weekday() != 1:  # 1 = Tuesday
-        return []
-    services = ["Food Waste Collection Service"]
-    if (date - _RECYCLING_ANCHOR).days % 14 == 0:
-        services.append("Recycling Collection Service")
-    else:
-        services.append("Domestic Waste Collection Service")
+    """Return collection service names due on `date`.
+
+    Refuse and garden waste run on different weekdays, so each is checked
+    independently rather than assuming one collection day.
+    """
+    services = []
+
+    if date.weekday() == 1:  # Tuesday: food, plus recycling/domestic alternating
+        services.append("Food Waste Collection Service")
+        if (date - _RECYCLING_ANCHOR).days % 14 == 0:
+            services.append("Recycling Collection Service")
+        else:
+            services.append("Domestic Waste Collection Service")
+
     if garden_due(date):
         services.append("Garden Waste Collection Service")
+
     return services
 
 
