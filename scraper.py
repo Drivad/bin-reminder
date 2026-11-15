@@ -182,6 +182,41 @@ def schedule_covers(entries: list[tuple[datetime.date, str]], date: datetime.dat
 #   anchor + 7, 21, 35, ... days → Food Waste + Domestic Waste
 _RECYCLING_ANCHOR = datetime.date(2026, 8, 4)
 
+# Garden waste, derived rather than confirmed - see README "Garden waste".
+#
+# The council's Week 1 calendar puts recycling on the weeks of 12 and 26 Jan
+# 2026, which makes the week of 3 Aug a general-waste week in that zone. This
+# property had recycling on Tue 4 Aug, so it is in ZONE WEEK 2. Garden waste
+# runs fortnightly on the same zone split, on the opposite fortnight to Week 1
+# (whose 2026 collections fall on the weeks of 5 Jan, 19 Jan ... 7 Dec).
+#
+# The one thing the council does not publish anywhere is which WEEKDAY a
+# property is collected on - the garden calendar leaves a blank "Collection
+# day:" field for the resident to fill in. This assumes the same Tuesday as the
+# refuse collection. If garden waste actually arrives on a different day, this
+# anchor is the single line to correct.
+_GARDEN_ANCHOR = datetime.date(2026, 11, 17)
+
+# Printed on the garden calendars; no collections at all in these windows.
+_GARDEN_SUSPENSIONS = [
+    (datetime.date(2026, 12, 21), datetime.date(2027, 1, 1)),
+    (datetime.date(2027, 12, 20), datetime.date(2028, 1, 2)),
+]
+
+
+def garden_due(date: datetime.date) -> bool:
+    """True if garden waste is collected on `date`.
+
+    Fortnightly from the anchor, with the published winter suspensions skipped.
+    A suspended collection is dropped, not deferred: the fortnightly parity
+    carries straight on afterwards.
+    """
+    if date.weekday() != _GARDEN_ANCHOR.weekday():
+        return False
+    if any(start <= date <= end for start, end in _GARDEN_SUSPENSIONS):
+        return False
+    return (date - _GARDEN_ANCHOR).days % 14 == 0
+
 
 def scheduled_collections(date: datetime.date) -> list[str]:
     """Return collection service names for a given date using hardcoded fortnightly schedule."""
@@ -192,6 +227,8 @@ def scheduled_collections(date: datetime.date) -> list[str]:
         services.append("Recycling Collection Service")
     else:
         services.append("Domestic Waste Collection Service")
+    if garden_due(date):
+        services.append("Garden Waste Collection Service")
     return services
 
 
@@ -418,8 +455,10 @@ def resolve_due(
     # most valuable exactly here.
     due, holiday_note = apply_holiday_changes(due, today, scheduled_collections)
     note = (
-        "(Estimated from the fortnightly cycle - garden waste is NOT included. "
-        "Run 'python scraper.py --list' from home and push the result to fix this.)"
+        "(Dates derived from the fortnightly cycle rather than the council's "
+        "live lookup, which is unreachable from here. Garden waste is included "
+        "but assumes it arrives on the same weekday as your other bins - if it "
+        "does not, the schedule for it will be wrong.)"
     )
     if holiday_note:
         note = f"{holiday_note}\n\n{note}"
