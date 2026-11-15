@@ -6,40 +6,45 @@ Emails you the evening before a bin collection.
 
 The council's portal sits behind an AWS load balancer that rejects datacenter
 IPs, so GitHub-hosted runners get a blanket `403` and cannot read the schedule.
-The reminder therefore runs best from a machine on a home connection.
 
-`scraper.py` tries the live portal first and falls back to a hardcoded
-fortnightly cycle if it cannot reach it:
+The portal returns several weeks of collections in one go, though, so it does
+not need visiting daily. Fetch it occasionally from home, save the result, and
+the nightly job just reads the saved copy - which works anywhere, CI included.
 
-| | Live portal | Fallback |
+`scraper.py` picks the best source available, in order:
+
+| Source | Covers | Needs |
 |---|---|---|
-| Food waste, recycling, domestic | yes | yes |
-| Garden waste (seasonal, separate day) | yes | **no** |
-| Handles bank-holiday shifts | yes | no |
+| `schedule.json` - the saved fetch | everything, garden waste included | a refresh every few weeks |
+| live portal scrape | everything | a residential connection |
+| fortnightly estimate | food / recycling / domestic only | nothing |
 
-Fallback emails are marked as estimates. Garden waste only works on the live
-path, which is the main reason to run it from home.
+If the saved schedule runs out, emails say so explicitly and fall back to the
+estimate, rather than quietly dropping garden waste.
 
-## Checking it by hand
+## Refreshing the schedule
 
-You do not need any of the hardware below to just look up your collections.
-From any machine on home broadband:
+Every few weeks, from any machine on home broadband:
 
 ```sh
-pip install -r requirements.txt
 python scraper.py --list --postcode "GU8 5QQ" --house-number 7
+git add schedule.json && git commit -m "Refresh schedule" && git push
 ```
 
 ```
 Upcoming collections (12 found):
 
-  Tue 18 Aug  Food Waste       (tomorrow)
-  Tue 18 Aug  Recycling        (tomorrow)
-  Thu 20 Aug  Garden Waste     (in 3 days)
+  Tue 17 Nov  Food Waste       (tomorrow)
+  Tue 17 Nov  Recycling        (tomorrow)
+  Thu 19 Nov  Garden Waste     (in 3 days)
+
+Your pIndex is 1 (needed for the iPhone Shortcut).
+Saved 12 collections to schedule.json, through Tue 08 Dec.
 ```
 
-No email is sent and no Gmail setup is needed. `--postcode` and
-`--house-number` fall back to the environment variables if omitted.
+No email is sent and no Gmail setup is needed. The reminder emails warn you
+two weeks before the saved schedule runs out, so you get told when to do this
+rather than having to remember.
 
 This will fail with a `403` on a work VPN or a cloud machine - the council
 blocks those. Run it from home.
@@ -78,6 +83,11 @@ silently skip often enough that it is worth pairing with a real scheduled job
 rather than relying on it alone.
 
 ## Recommended setup: Raspberry Pi
+
+A Pi is now optional. With the saved schedule above, the GitHub Actions job
+covers everything, and a Pi only buys you automatic refreshes and exact
+delivery times. Worth it if GitHub's scheduler drift annoys you - it has run
+this job up to nine hours late.
 
 A Pi Zero 2 W (~£15) is enough — it draws under a watt and runs silently.
 

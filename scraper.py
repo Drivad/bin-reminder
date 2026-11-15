@@ -1,6 +1,8 @@
 import argparse
 import datetime
+import json
 import os
+import pathlib
 import re
 import smtplib
 import sys
@@ -110,6 +112,69 @@ def send_email(msg: MIMEText, sender: str, app_password: str) -> None:
         smtp.login(sender, app_password)
         smtp.send_message(msg)
 
+# The portal hands back several weeks of collections at once, so it only needs
+# visiting occasionally from a residential connection. Everything in between
+# reads this saved copy, which works anywhere - CI included.
+SCHEDULE_FILE = pathlib.Path(__file__).with_name("schedule.json")
+
+# Warn this many days before the saved schedule runs out, so there is time to
+# refresh before it silently degrades to the fortnightly estimate.
+CACHE_WARN_DAYS = 14
+
+
+def save_schedule(
+    entries: list[tuple[datetime.date, str]],
+    path: pathlib.Path = SCHEDULE_FILE,
+    today: datetime.date = None,
+) -> None:
+    """Write collections to disk so later runs need no network."""
+    today = today or datetime.date.today()
+    payload = {
+        "refreshed": today.isoformat(),
+        "collections": [
+            {"date": d.isoformat(), "service": s} for d, s in sorted(entries)
+        ],
+    }
+    path.write_text(json.dumps(payload, indent=2) + "\n")
+
+
+def load_schedule(
+    path: pathlib.Path = SCHEDULE_FILE,
+) -> tuple[list[tuple[datetime.date, str]], datetime.date]:
+    """Read the saved schedule. Returns ([], None) if missing or unreadable.
+
+    Never raises: a corrupt cache must degrade to the estimate, not crash the
+    nightly job.
+    """
+    try:
+        payload = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return [], None
+
+    entries = []
+    for row in payload.get("collections", []):
+        try:
+            entries.append((datetime.date.fromisoformat(row["date"]), row["service"]))
+        except (KeyError, TypeError, ValueError):
+            continue  # skip malformed rows rather than losing the whole cache
+
+    try:
+        refreshed = datetime.date.fromisoformat(payload["refreshed"])
+    except (KeyError, TypeError, ValueError):
+        refreshed = None
+
+    return sorted(entries), refreshed
+
+
+def schedule_covers(entries: list[tuple[datetime.date, str]], date: datetime.date) -> bool:
+    """True if the saved schedule extends far enough to be trusted for `date`.
+
+    A cache whose last entry is before `date` cannot distinguish "no collection
+    that day" from "ran out of data", so it must not be used.
+    """
+    return bool(entries) and max(d for d, _ in entries) >= date
+
+
 # Anchor: a known Recycling Tuesday. The fortnightly cycle is:
 #   anchor + 0, 14, 28, ... days → Food Waste + Recycling
 #   anchor + 7, 21, 35, ... days → Food Waste + Domestic Waste
@@ -202,12 +267,81 @@ def list_collections(postcode: str = None, house_number: str = None) -> int:
     # The pindex is fixed for a property, so it can be hardcoded into an iOS
     # Shortcut to skip the address lookup entirely. See README.
     print(f"\nYour pIndex is {pindex} (needed for the iPhone Shortcut).")
+
+    # Always save what we fetched: this is the whole point of running from home.
+    save_schedule(entries)
+    last = max(d for d, _ in entries)
+    print(f"Saved {len(entries)} collections to {SCHEDULE_FILE.name}, through {last:%a %d %b}.")
+    print("Commit and push it so the nightly reminder uses it:")
+    print(f"    git add {SCHEDULE_FILE.name} && git commit -m 'Refresh schedule' && git push")
     return 0
 
 
 def short_name(service: str) -> str:
     """Strip the 'Collection Service' suffix for readable output."""
     return re.sub(r"\s*collection service\s*$", "", service, flags=re.IGNORECASE).strip()
+
+
+def resolve_due(
+    today: datetime.date,
+) -> tuple[list[str], str]:
+    """Work out tomorrow's collections. Returns (services, note_for_email).
+
+    Three sources, best first:
+      1. the saved schedule, if it reaches far enough ahead - real data,
+         garden waste included, and needs no network
+      2. a live scrape, which only works from a residential connection; the
+         result is saved so later runs get source 1
+      3. the fortnightly estimate, which cannot model garden waste
+    """
+    tomorrow = today + datetime.timedelta(days=1)
+
+    cached, refreshed = load_schedule()
+    if schedule_covers(cached, tomorrow):
+        due = collections_tomorrow(cached, today)
+        runs_out = max(d for d, _ in cached)
+        days_left = (runs_out - today).days
+        print(
+            f"Using saved schedule ({len(cached)} collections, "
+            f"refreshed {refreshed or 'unknown'}, good through {runs_out})."
+        )
+        note = None
+        if days_left <= CACHE_WARN_DAYS:
+            note = (
+                f"Heads up: the saved schedule runs out in {days_left} days "
+                f"({runs_out:%a %d %b}). Run 'python scraper.py --list' from home "
+                "and push the result, or garden waste will drop off."
+            )
+            print(f"WARNING: schedule runs out in {days_left} days.", file=sys.stderr)
+        return due, note
+
+    if cached:
+        print(
+            f"Saved schedule ran out on {max(d for d, _ in cached)}; it cannot "
+            "cover tomorrow.",
+            file=sys.stderr,
+        )
+    else:
+        print("No saved schedule found.", file=sys.stderr)
+
+    # Nothing cached for tomorrow - try live, in case we happen to be on a
+    # connection the portal accepts. Saves the result if it works.
+    try:
+        entries = scrape_schedule()
+        if not entries:
+            raise ValueError("portal returned no collections")
+        save_schedule(entries, today=today)
+        print(f"Fetched and saved {len(entries)} collections from the portal.")
+        return collections_tomorrow(entries, today), None
+    except Exception as e:  # noqa: BLE001 - any failure falls back to maths
+        print(f"Live lookup unavailable ({type(e).__name__}: {e}).", file=sys.stderr)
+
+    print("Falling back to the fortnightly estimate.", file=sys.stderr)
+    return scheduled_collections(tomorrow), (
+        "(Estimated from the fortnightly cycle - garden waste and bank-holiday "
+        "changes are NOT included. Run 'python scraper.py --list' from home and "
+        "push the result to fix this.)"
+    )
 
 
 def main() -> None:
@@ -218,7 +352,8 @@ def main() -> None:
     parser.add_argument(
         "--list",
         action="store_true",
-        help="print upcoming collections and exit, without sending any email",
+        help="fetch from the portal, print upcoming collections and save them "
+        "to schedule.json; sends no email. Run this from home broadband.",
     )
     parser.add_argument("--postcode", help="overrides the POSTCODE environment variable")
     parser.add_argument(
@@ -235,21 +370,7 @@ def main() -> None:
 
     today = datetime.datetime.now(datetime.timezone.utc).date()
     tomorrow = today + datetime.timedelta(days=1)
-
-    # Prefer live data: it is the only source that covers Garden Waste, which
-    # runs on a separate seasonal schedule the fortnightly maths cannot model.
-    note = None
-    try:
-        entries = scrape_schedule()
-        print(f"Scraped {len(entries)} collection(s) from portal.")
-        if not entries:
-            raise ValueError("portal returned no collections")
-        due_tomorrow = collections_tomorrow(entries, today)
-    except Exception as e:  # noqa: BLE001 - any failure falls back to maths
-        print(f"Live lookup unavailable ({type(e).__name__}: {e}).", file=sys.stderr)
-        print("Falling back to the hardcoded fortnightly schedule.", file=sys.stderr)
-        due_tomorrow = scheduled_collections(tomorrow)
-        note = "(Estimated from the fortnightly cycle - garden waste not included.)"
+    due_tomorrow, note = resolve_due(today)
 
     if not due_tomorrow:
         print("No collections due tomorrow. Nothing to do.")

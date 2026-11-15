@@ -1,3 +1,4 @@
+import json
 import pytest
 
 from scraper import extract_track_token
@@ -223,3 +224,71 @@ def test_compose_email_includes_note_when_given():
         note="(Estimated.)",
     )
     assert "(Estimated.)" in msg.get_payload(decode=True).decode("utf-8")
+
+
+import pathlib
+from scraper import save_schedule, load_schedule, schedule_covers, CACHE_WARN_DAYS
+
+CACHE_ENTRIES = [
+    (datetime.date(2026, 11, 17), "Food Waste Collection Service"),
+    (datetime.date(2026, 11, 17), "Recycling Collection Service"),
+    (datetime.date(2026, 11, 19), "Garden Waste Collection Service"),
+    (datetime.date(2026, 11, 24), "Domestic Waste Collection Service"),
+]
+
+
+def test_save_and_load_schedule_roundtrip(tmp_path):
+    path = tmp_path / "schedule.json"
+    save_schedule(CACHE_ENTRIES, path, today=datetime.date(2026, 11, 15))
+    entries, refreshed = load_schedule(path)
+    assert entries == sorted(CACHE_ENTRIES)
+    assert refreshed == datetime.date(2026, 11, 15)
+
+
+def test_load_schedule_missing_file_is_not_an_error(tmp_path):
+    assert load_schedule(tmp_path / "nope.json") == ([], None)
+
+
+def test_load_schedule_corrupt_file_is_not_an_error(tmp_path):
+    path = tmp_path / "schedule.json"
+    path.write_text("{ this is not json")
+    assert load_schedule(path) == ([], None)
+
+
+def test_load_schedule_skips_malformed_rows_but_keeps_good_ones(tmp_path):
+    path = tmp_path / "schedule.json"
+    path.write_text(json.dumps({
+        "refreshed": "2026-11-15",
+        "collections": [
+            {"date": "2026-11-17", "service": "Food Waste Collection Service"},
+            {"date": "not-a-date", "service": "Broken"},
+            {"service": "No date at all"},
+        ],
+    }))
+    entries, _ = load_schedule(path)
+    assert entries == [(datetime.date(2026, 11, 17), "Food Waste Collection Service")]
+
+
+def test_schedule_covers_date_within_range():
+    assert schedule_covers(CACHE_ENTRIES, datetime.date(2026, 11, 17)) is True
+
+
+def test_schedule_covers_the_final_date_itself():
+    # The last entry is 24 Nov; that day is still covered.
+    assert schedule_covers(CACHE_ENTRIES, datetime.date(2026, 11, 24)) is True
+
+
+def test_schedule_does_not_cover_beyond_its_last_entry():
+    # Past the end, "no collection" is indistinguishable from "no data",
+    # so the cache must not be trusted.
+    assert schedule_covers(CACHE_ENTRIES, datetime.date(2026, 11, 25)) is False
+
+
+def test_schedule_covers_is_false_when_empty():
+    assert schedule_covers([], datetime.date(2026, 11, 17)) is False
+
+
+def test_cache_warn_days_gives_time_to_refresh():
+    # The warning must fire while there is still more than a week of runway,
+    # since refreshing needs the user to be at home.
+    assert CACHE_WARN_DAYS >= 7
