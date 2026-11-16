@@ -139,3 +139,38 @@ def test_stale_row_raises_rather_than_silently_resolving():
         from holidays import _resolve
 
         _resolve("Thursday 25 December", 2026)
+
+
+# --- the bins page fetch must survive a slow council site -----------------
+
+def test_bins_page_fetch_retries_then_succeeds(monkeypatch):
+    import scraper
+
+    calls = []
+
+    def flaky(url, **kwargs):
+        calls.append(kwargs.get("timeout"))
+        if len(calls) < 3:
+            raise TimeoutError("read timed out")
+        return "<html>ok</html>"
+
+    monkeypatch.setattr(scraper, "fetch_html", flaky)
+    monkeypatch.setattr(scraper.time, "sleep", lambda _: None)
+
+    assert scraper.fetch_bins_page() == "<html>ok</html>"
+    assert len(calls) == 3
+    # The 15s default was too short for this page in production.
+    assert all(t >= 45 for t in calls)
+
+
+def test_bins_page_fetch_gives_up_and_reraises(monkeypatch):
+    import scraper
+
+    def always_fails(url, **kwargs):
+        raise TimeoutError("read timed out")
+
+    monkeypatch.setattr(scraper, "fetch_html", always_fails)
+    monkeypatch.setattr(scraper.time, "sleep", lambda _: None)
+
+    with pytest.raises(TimeoutError):
+        scraper.fetch_bins_page()

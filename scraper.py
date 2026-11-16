@@ -6,6 +6,7 @@ import pathlib
 import re
 import smtplib
 import sys
+import time
 
 import requests
 from bs4 import BeautifulSoup
@@ -323,6 +324,31 @@ def short_name(service: str) -> str:
     return re.sub(r"\s*collection service\s*$", "", service, flags=re.IGNORECASE).strip()
 
 
+# The council's bins page is a large, slow CMS render and has been seen to take
+# over 15s from a GitHub runner. A transient timeout here would silently drop
+# the Christmas adjustment, so allow plenty of time and retry.
+BINS_PAGE_TIMEOUT = 45
+BINS_PAGE_ATTEMPTS = 3
+
+
+def fetch_bins_page() -> str:
+    """Fetch the council bins page, retrying on transient failures."""
+    last = None
+    for attempt in range(1, BINS_PAGE_ATTEMPTS + 1):
+        try:
+            return fetch_html(holidays.BINS_PAGE, timeout=BINS_PAGE_TIMEOUT)
+        except Exception as e:  # noqa: BLE001 - retry anything, report the last
+            last = e
+            print(
+                f"  bins page attempt {attempt}/{BINS_PAGE_ATTEMPTS} failed "
+                f"({type(e).__name__})",
+                file=sys.stderr,
+            )
+            if attempt < BINS_PAGE_ATTEMPTS:
+                time.sleep(3 * attempt)
+    raise last
+
+
 def apply_holiday_changes(
     due: list[str],
     today: datetime.date,
@@ -335,7 +361,7 @@ def apply_holiday_changes(
     """
     tomorrow = today + datetime.timedelta(days=1)
     try:
-        html = fetch_html(holidays.BINS_PAGE)
+        html = fetch_bins_page()
         changes = holidays.parse_holiday_changes(html, today)
     except Exception as e:  # noqa: BLE001 - never let this break the reminder
         print(f"Could not check for holiday changes ({type(e).__name__}: {e}).", file=sys.stderr)
@@ -375,7 +401,7 @@ def show_holidays() -> int:
     today = datetime.date.today()
     print(f"Fetching {holidays.BINS_PAGE}")
     try:
-        html = fetch_html(holidays.BINS_PAGE)
+        html = fetch_bins_page()
     except Exception as e:  # noqa: BLE001 - diagnostic, report anything
         print(f"FAILED: {type(e).__name__}: {e}", file=sys.stderr)
         return 1
